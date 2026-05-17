@@ -237,7 +237,7 @@ open config-generator.html
 
 ### 多用户配置
 
-支持通过配置文件配置多个用户的CURL命令和个性化参数，适合需要同时管理多个微信读书账号的场景。若无法写入文件（如 GitHub Actions Secrets），可使用 `WEREAD_CURL_STRING` 放置多段 curl，每段之间至少留出 **两个空行**，程序会自动拆分为多个用户（名称自动生成）。
+支持通过配置文件配置多个用户的CURL命令和个性化参数，适合需要同时管理多个微信读书账号的场景。若无法写入文件（如 GitHub Actions Secrets），可使用 `WEREAD_CURL_STRING` 放置多段 curl，每段之间至少留出 **两个空行**，程序会自动拆分为多个用户（名称自动生成）。自动拆分模式下，可用 `USER_TARGET_DURATIONS` 按顺序为每个用户覆盖阅读时长，例如 `10,140` 表示第 1 个用户读 10 分钟、第 2 个用户读 140 分钟。
 
 | 配置项 | 配置文件路径 | 说明 |
 |--------|-------------|------|
@@ -271,6 +271,7 @@ open config-generator.html
 | 启动模式 | `STARTUP_MODE` | `immediate` | immediate/scheduled/daemon |
 | 启动延迟 | `STARTUP_DELAY` | `1-10` | 启动随机延迟（秒） |
 | 最大并发用户 | `MAX_CONCURRENT_USERS` | `1` | 多用户模式下同时执行的账号数量 |
+| 用户级目标时长 | `USER_TARGET_DURATIONS` | 空 | 多用户按顺序覆盖目标时长，逗号/分号/换行分隔，如 `10,140` |
 
 > `config.yaml.example` 中给出了更保守的示例值（如 `startup_delay: "60-300"`），用于降低固定启动特征；上表列出的是程序内置默认值。
 
@@ -1136,6 +1137,7 @@ python weread-bot.py --config account2.yaml
 **A: 执行时间计算：**
 - 当 `MAX_CONCURRENT_USERS = 1` 时，总时间≈所有用户阅读时长之和
 - 当并发数 > 1 时，总时间≈(总阅读时长 / 并发数) + 少量调度开销
+- 若使用 `WEREAD_CURL_STRING` 自动拆分多用户，可用 `USER_TARGET_DURATIONS` 设置不同账号时长，如 `10,140`
 - **优化建议**：根据目标机器性能与风控策略调整并发数与单次时长
 - **说明**：适度的并发可以缩短整体运行时间，但请确保网络与账号风险可控
 

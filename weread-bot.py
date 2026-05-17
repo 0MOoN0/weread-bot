@@ -1174,6 +1174,48 @@ class ConfigManager:
 
         return channels
 
+    def _parse_env_user_target_durations(self) -> List[str]:
+        """解析用户级目标时长环境变量，按用户顺序应用"""
+        raw_value = os.getenv("USER_TARGET_DURATIONS", "").strip()
+        if not raw_value:
+            return []
+
+        # 支持逗号、分号或换行分隔；保留空位，便于跳过某个用户。
+        durations = [item.strip() for item in re.split(r'[,;\n]', raw_value)]
+        return durations
+
+    def _apply_env_user_target_durations(
+        self, users: List[UserConfig]
+    ) -> None:
+        """将 USER_TARGET_DURATIONS 应用到多用户配置"""
+        durations = self._parse_env_user_target_durations()
+        if not durations:
+            return
+
+        applied_count = 0
+        for index, duration in enumerate(durations):
+            if index >= len(users):
+                logging.warning(
+                    "⚠️ USER_TARGET_DURATIONS 包含多余条目，"
+                    f"第 {index + 1} 项未对应任何用户"
+                )
+                continue
+            if not duration:
+                continue
+
+            user = users[index]
+            user.reading_overrides = dict(user.reading_overrides or {})
+            user.reading_overrides["target_duration"] = duration
+            applied_count += 1
+            logging.info(
+                f"✅ 已为用户 {user.name} 应用环境变量目标时长: {duration} 分钟"
+            )
+
+        if applied_count:
+            logging.info(
+                f"✅ 已从 USER_TARGET_DURATIONS 应用 {applied_count} 个用户级时长覆盖"
+            )
+
     def _load_user_configs(self, config_data: dict) -> List[UserConfig]:
         """加载用户配置"""
         users = []
@@ -1220,6 +1262,7 @@ class ConfigManager:
                         content=segments[0]
                     ))
 
+        self._apply_env_user_target_durations(users)
         return users
 
 

@@ -31,6 +31,7 @@ Fork 完成后，需要在你的仓库中配置必要的环境变量：
 
 - 将多个 cURL 片段写入同一个 `WEREAD_CURL_STRING`，**片段之间至少插入两个空行**，程序会自动拆分为多个用户。
 - 通过 `MAX_CONCURRENT_USERS` 控制并发执行账号数量，默认 1 表示顺序执行，建议从 1 开始再逐步提高。
+- 如需为不同账号设置不同阅读时长，可配置 `USER_TARGET_DURATIONS`，按 cURL 顺序填写逗号分隔值，例如 `10,140`。
 - 单个片段只绑定一个账号的 cURL，确保不同用户分段清晰，避免粘连。
 
 示例（Secret 内容，注意两空行分隔）：
@@ -46,7 +47,8 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 
 | Secret 名称 | 说明 | 默认值 |
 |------------|------|------|
-| `TARGET_DURATION` | 默认阅读时长，格式如 `5-10`；用于定时触发或手动触发留空时的默认值 | 1-2 |
+| `TARGET_DURATION` | 默认阅读时长，格式如 `5-10`；用于定时触发或手动触发留空时的默认值 | 45-55 |
+| `USER_TARGET_DURATIONS` | 多用户分别阅读时长，按 cURL 顺序逗号分隔，如 `10,140`；未填写的用户沿用 `TARGET_DURATION` | 空 |
 | `MAX_CONCURRENT_USERS` | 多用户并发数量（>=1） | 1 |
 | `HACK_COOKIE_REFRESH_QL` | Cookie 刷新兼容开关全局默认值，遇到刷新失败可切换 true/false | false |
 | `NOTIFICATION_ONLY_ON_FAILURE` | 仅失败通知开关（true/false），覆盖 workflow 运行参数 | false |
@@ -211,14 +213,17 @@ on:
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `target_duration` | 留空 | 手动触发时可直接填写；留空则优先使用 Secret `TARGET_DURATION`，否则回退到 `1-2` |
+| `target_duration` | 留空 | 手动触发时可直接填写；留空则优先使用 Secret `TARGET_DURATION`，否则回退到 `45-55` |
+| `user_target_durations` | 留空 | 多用户分别阅读时长，按 cURL 顺序逗号分隔，如 `10,140`；留空则优先使用 Secret `USER_TARGET_DURATIONS` |
 | `reading_mode` | `smart_random` | 阅读模式 |
 | `notify_enabled` | `true` | 是否启用通知 |
 | `notify_only_on_failure` | `false` | 仅失败时发送通知 |
 | `history_enabled` | `true` | 是否启用执行历史持久化 |
 | `history_max_entries` | `50` | 执行历史最多保留多少条 |
 
-当在 GitHub Actions 中手动触发 `auto-reading.yml` 时，可以直接在界面填写 `target_duration` 覆盖本次阅读时长；若留空，则 workflow 会优先读取仓库 Secret `TARGET_DURATION`，再回退到默认值 `1-2`。这对 fork 后不想改 workflow 代码、但想给定时任务设置默认时长的场景尤其有用。
+当在 GitHub Actions 中手动触发 `auto-reading.yml` 时，可以直接在界面填写 `target_duration` 覆盖本次阅读时长；若留空，则 workflow 会优先读取仓库 Secret `TARGET_DURATION`，再回退到默认值 `45-55`。这对 fork 后不想改 workflow 代码、但想给定时任务设置默认时长的场景尤其有用。
+
+多用户场景可额外填写 `user_target_durations`，例如 `10,140` 会让第 1 段 cURL 对应的用户读 10 分钟、第 2 段 cURL 对应的用户读 140 分钟；未填写或留空的用户沿用全局 `target_duration`。
 
 同时，你也可以直接在界面勾选以上两个通知开关：`notify_enabled` 控制是否生成阅读成功摘要，`notify_only_on_failure` 则对应 `config.yaml` 中的 `notification.only_on_failure`，会自动关闭 `session_success` 和 `multi_user_summary` 两类成功事件，仅保留失败/异常通知。
 
