@@ -303,8 +303,7 @@ class NotificationConfig:
 @dataclass
 class HackConfig:
     """Hack 配置"""
-    # Cookie刷新时ql属性设置
-    # 根据不同用户的环境，可能需要设置为True或False来确保cookie刷新正常工作
+    # Cookie 刷新首选 ql 值；鉴权失败时当前账号只尝试一次相反值。
     cookie_refresh_ql: bool = False
 
 
@@ -3054,7 +3053,7 @@ class WeReadApplication:
 
 
 class WeReadSessionManager:
-    """微信读书会话管理器"""
+    """管理单个账号的阅读和续期；续期兼容两种网页登录方式。"""
 
     # 微信读书API常量
     KEY = "3c5c8717f3daf09iop3423zafeqoi"
@@ -3605,7 +3604,7 @@ class WeReadSessionManager:
             return False, 0.0
 
     async def _refresh_cookie(self) -> bool:
-        """刷新cookie"""
+        """刷新当前账号 Cookie；鉴权失败时仅切换一次 ql，并保留成功取值。"""
         logging.info("🍪 刷新cookie...")
 
         try:
@@ -3617,6 +3616,32 @@ class WeReadSessionManager:
             )
 
             new_skey = self._extract_wr_skey_from_response(response)
+
+            if not new_skey:
+                try:
+                    response_data = response.json()
+                except ValueError:
+                    response_data = {}
+
+                # 快捷登录和扫码登录可能需要相反的 ql；只针对鉴权错误
+                # 补一次请求，避免其他接口错误或失效 Cookie 导致无限重试。
+                if (isinstance(response_data, dict)
+                        and response_data.get('errCode') == -2013):
+                    fallback_data = dict(self.cookie_data)
+                    fallback_data['ql'] = not self.cookie_data['ql']
+                    logging.info(
+                        f"🍪 用户 {self.user_name} 续期鉴权失败，"
+                        f"尝试 ql={fallback_data['ql']}"
+                    )
+                    response, _ = await self.http_client.post_raw(
+                        self.RENEW_URL,
+                        headers=self.headers,
+                        cookies=self.cookies,
+                        json_data=fallback_data
+                    )
+                    new_skey = self._extract_wr_skey_from_response(response)
+                    if new_skey:
+                        self.cookie_data = fallback_data
 
             if not new_skey:
                 logging.error(

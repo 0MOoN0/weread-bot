@@ -50,7 +50,7 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 | `TARGET_DURATION` | 默认阅读时长，格式如 `5-10`；用于定时触发或手动触发留空时的默认值 | 45-55 |
 | `USER_TARGET_DURATIONS` | 多用户分别阅读时长，按 cURL 顺序逗号分隔，如 `10,140`；未填写的用户沿用 `TARGET_DURATION` | 空 |
 | `MAX_CONCURRENT_USERS` | 多用户并发数量（>=1） | 1 |
-| `HACK_COOKIE_REFRESH_QL` | Cookie 刷新兼容开关全局默认值，遇到刷新失败可切换 true/false | false |
+| `HACK_COOKIE_REFRESH_QL` | Cookie 刷新的首选 ql 值；鉴权失败时自动尝试一次相反值 | false |
 | `NOTIFICATION_ONLY_ON_FAILURE` | 仅失败通知开关（true/false），覆盖 workflow 运行参数 | false |
 | `HISTORY_ENABLED` | 是否启用执行历史持久化 | true |
 | `HISTORY_FILE` | 执行历史输出路径 | logs/run-history.json |
@@ -163,10 +163,9 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 > - `HACK_COOKIE_REFRESH_QL`: 控制Cookie刷新请求中的`ql`参数值，作为全局默认值
 >   - `false` (默认): 使用`"ql": false`
 >   - `true`: 使用`"ql": true`
-> - 根据不同用户的环境，可能需要设置为True或False来确保cookie刷新正常工作
-> - 如果遇到cookie刷新失败的问题，可以尝试切换此配置的值
-> - 建议先使用默认值，如果出现cookie相关错误再尝试修改
-> - GitHub Actions Secrets 只能设置全局默认值；如果多用户需要不同取值，请改用配置文件中的 `curl_config.users[].cookie_refresh_ql`
+> - 快捷登录和扫码登录可能需要不同取值。续期接口返回鉴权失败（`errCode=-2013`）时，程序会自动尝试一次相反值，成功后该账号本次运行继续使用成功值。
+> - 其他错误不会触发这次尝试；两种取值都失败时，需要检查账号是否已退出或 Cookie 是否失效。
+> - GitHub Actions Secrets 设置全局首选值；配置文件中的 `curl_config.users[].cookie_refresh_ql` 可以设置各账号的首选值。
 
 ### 步骤 3: 启用 GitHub Actions
 
@@ -306,19 +305,17 @@ A: 当前 workflow 会在任务结束后上传 artifact，默认包含 `logs/wer
 
 ### Q: 遇到 Cookie 刷新失败怎么办？
 
-A: 这可能是 `cookie_refresh_ql` 配置问题：
-1. 在仓库 Settings → Secrets 中添加 `HACK_COOKIE_REFRESH_QL`
-2. 如果当前设置为 `false`，尝试设置为 `true`
-3. 如果当前设置为 `true`，尝试设置为 `false`
-4. 重新运行 Action 测试
-5. 如果是多用户且仅部分账号失败，请改用配置文件，为对应账号单独设置 `curl_config.users[].cookie_refresh_ql`
+A: 程序遇到续期鉴权失败（`errCode=-2013`）会自动尝试一次相反的 `ql` 值，两个账号可以使用不同登录方式。
+1. 查看日志，确认是否已经尝试相反值。
+2. 两次都失败时，重新登录对应账号，重新获取 cURL 并更新 `WEREAD_CURL_STRING`。
+3. 如需调整首选值，可设置 `HACK_COOKIE_REFRESH_QL`，或在配置文件中设置 `curl_config.users[].cookie_refresh_ql`。
 
 ### Q: 如何判断是否需要调整 Hack 配置？
 
 A: 查看运行日志中的错误信息：
 - 搜索关键词：`cookie`、`refresh`、`ql`、`认证`
-- 如果看到 Cookie 相关错误，尝试调整 `HACK_COOKIE_REFRESH_QL` 配置
-- 如果只有某个账号失败，优先检查该账号是否需要单独设置 `curl_config.users[].cookie_refresh_ql`
+- 如果切换 `ql` 后成功，通常无需再改配置
+- 如果只有某个账号两次续期都失败，优先重新获取该账号的登录信息
 - 如果看到 401/403 认证错误，也可能是此配置问题
 
 ## 🔒 安全提示
