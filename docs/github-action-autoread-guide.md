@@ -50,7 +50,8 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 | `TARGET_DURATION` | 默认阅读时长，格式如 `5-10`；用于定时触发或手动触发留空时的默认值 | 45-55 |
 | `USER_TARGET_DURATIONS` | 多用户分别阅读时长，按 cURL 顺序逗号分隔，如 `10,140`；未填写的用户沿用 `TARGET_DURATION` | 空 |
 | `MAX_CONCURRENT_USERS` | 多用户并发数量（>=1） | 1 |
-| `HACK_COOKIE_REFRESH_QL` | Cookie 刷新的首选 ql 值；鉴权失败时自动尝试一次相反值 | false |
+| `MAX_CONSECUTIVE_FAILURES` | 单个用户连续阅读失败上限，达到后结束该会话 | 5 |
+| `HACK_COOKIE_REFRESH_QL` | Cookie 刷新首选 `ql` 值，失败时自动尝试其他兼容形式 | false |
 | `NOTIFICATION_ONLY_ON_FAILURE` | 仅失败通知开关（true/false），覆盖 workflow 运行参数 | true |
 | `HISTORY_ENABLED` | 是否启用执行历史持久化 | true |
 | `HISTORY_FILE` | 执行历史输出路径 | logs/run-history.json |
@@ -157,15 +158,15 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 **Hack 配置（可选）**
 | Secret 名称 | 说明 | 默认值 |
 |------------|------|--------|
-| `HACK_COOKIE_REFRESH_QL` | Cookie刷新时ql属性值设置 | `false` |
+| `HACK_COOKIE_REFRESH_QL` | Cookie 刷新时首选的 `ql` 值 | `false` |
 
 > **Hack 配置说明：**
-> - `HACK_COOKIE_REFRESH_QL`: 控制Cookie刷新请求中的`ql`参数值，作为全局默认值
->   - `false` (默认): 使用`"ql": false`
->   - `true`: 使用`"ql": true`
-> - 快捷登录和扫码登录可能需要不同取值。续期接口返回鉴权失败（`errCode=-2013`）时，程序会自动尝试一次相反值，成功后该账号本次运行继续使用成功值。
-> - 其他错误不会触发这次尝试；两种取值都失败时，需要检查账号是否已退出或 Cookie 是否失效。
-> - GitHub Actions Secrets 设置全局首选值；配置文件中的 `curl_config.users[].cookie_refresh_ql` 可以设置各账号的首选值。
+> - `HACK_COOKIE_REFRESH_QL`: 控制 Cookie 刷新请求首选的 `ql` 参数值，作为全局默认值
+>   - `false` (默认): 优先使用 `"ql": false`
+>   - `true`: 优先使用 `"ql": true`
+> - 首选形式失败时，程序会自动尝试相反值和省略 `ql`
+> - 三种形式均失败时，需要重新获取登录 cURL
+> - GitHub Actions Secrets 只能设置全局默认值；如果多用户需要不同取值，请改用配置文件中的 `curl_config.users[].cookie_refresh_ql`
 
 ### 步骤 3: 启用 GitHub Actions
 
@@ -180,22 +181,20 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 1. 在 **Actions** 页面，选择 **Auto Reading Bot** workflow
 2. 点击 **Run workflow** 按钮
 3. 配置运行参数：
-   - **阅读时长**: 格式为 `60-90`，表示随机 60-90 分钟；留空时优先使用仓库 Secret `TARGET_DURATION`，否则默认 `1-2`
+   - **阅读时长**: 格式为 `60-90`，表示随机 60-90 分钟；留空时优先使用仓库 Secret `TARGET_DURATION`，否则默认 `45-55`
    - **阅读模式**: 选择阅读策略
-   - **启用通知**: 是否发送完成通知
+   - **启用通知**: 是否允许发送通知，默认仅失败时通知
    - **启用执行历史**: 是否在运行后保存最近执行记录
    - **历史保留条数**: 最近执行记录最多保留多少条
 
-#### 定时触发（可选）
+#### 定时触发
 
-Fork 后默认不会自动定时运行，因为仓库中的 `.github/workflows/auto-reading.yml` 仍然把 `schedule` 注释掉了。若希望自动定时运行，必须先取消该注释，再按需要调整 cron 表达式：
+本仓库的 `.github/workflows/auto-reading.yml` 已启用定时运行，每天北京时间 07:04 执行。需要调整时间时，修改以下 cron 表达式；其时间使用 UTC：
 
 ```yaml
 on:
-  # 取消注释以下行启用定时触发
   schedule:
-    - cron: '0 0 * * *'    # UTC 00:00 = 北京时间 08:00
-    - cron: '0 12 * * *'   # UTC 12:00 = 北京时间 20:00
+    - cron: '4 23 * * *'  # UTC 23:04 = 北京时间次日 07:04
 ```
 
 ## ⚙️ 配置参数说明
@@ -270,7 +269,15 @@ history:
 
 - ✅ **成功**: 阅读任务正常完成
 - ❌ **失败**: 检查错误日志，通常是配置问题
-- ⏸️ **取消**: 手动取消或超时（2小时）
+- ⏸️ **取消**: 手动取消或超时（整个任务上限为 200 分钟）
+
+程序退出码如下：
+
+- `0`：所有用户成功。
+- `1`：配置错误、运行失败或部分用户失败。
+- `130`：手动取消或系统中断。
+
+scheduled和daemon模式会为每次会话单独写历史。单次失败不会结束常驻进程。
 
 ## ❓ 常见问题
 
@@ -297,7 +304,7 @@ A: 是的，GitHub 免费账户每月有 2000 分钟的 Actions 使用时间。�
 
 ### Q: 如何设置定时运行？
 
-A: 先取消 `.github/workflows/auto-reading.yml` 中 `schedule` 部分的注释，并根据需要调整 cron 表达式。注意时间为 UTC 时间。如果你 fork 后不想继续改代码，但想调整默认阅读时长，可以额外配置仓库 Secret `TARGET_DURATION`，例如 `5-10`。
+A: 本仓库已设置为每天北京时间 07:04 运行。需要改时间时，修改 `.github/workflows/auto-reading.yml` 中 `schedule` 下的 cron 表达式，注意时间使用 UTC。只调整默认阅读时长时，可以配置仓库 Secret `TARGET_DURATION`，例如 `5-10`；不同账号分别设置时长则使用 `USER_TARGET_DURATIONS`，例如 `10,140`。
 
 ### Q: GitHub Actions 里的执行历史保存在哪里？
 
@@ -305,17 +312,17 @@ A: 当前 workflow 会在任务结束后上传 artifact，默认包含 `logs/wer
 
 ### Q: 遇到 Cookie 刷新失败怎么办？
 
-A: 程序遇到续期鉴权失败（`errCode=-2013`）会自动尝试一次相反的 `ql` 值，两个账号可以使用不同登录方式。
-1. 查看日志，确认是否已经尝试相反值。
-2. 两次都失败时，重新登录对应账号，重新获取 cURL 并更新 `WEREAD_CURL_STRING`。
-3. 如需调整首选值，可设置 `HACK_COOKIE_REFRESH_QL`，或在配置文件中设置 `curl_config.users[].cookie_refresh_ql`。
+A: 程序会按首选值、相反值和省略 `ql` 的顺序自动尝试。三种形式均失败时：
+1. 检查网络连接和 Action 日志中的认证错误
+2. 重新登录微信读书并获取最新 cURL
+3. 更新 `WEREAD_CURL_STRING` 后重新运行 Action
 
 ### Q: 如何判断是否需要调整 Hack 配置？
 
 A: 查看运行日志中的错误信息：
 - 搜索关键词：`cookie`、`refresh`、`ql`、`认证`
-- 如果切换 `ql` 后成功，通常无需再改配置
-- 如果只有某个账号两次续期都失败，优先重新获取该账号的登录信息
+- 日志会显示每次尝试采用的 `ql` 形式
+- 三种形式均未返回 `wr_skey` 时，优先更新该账号的 cURL
 - 如果看到 401/403 认证错误，也可能是此配置问题
 
 ## 🔒 安全提示
