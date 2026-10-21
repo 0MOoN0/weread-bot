@@ -44,7 +44,7 @@ on:
       notify_only_on_failure:
         description: '仅失败时发送通知'
         required: false
-        default: false
+        default: true
         type: boolean
       history_enabled:
         description: '启用执行历史持久化'
@@ -61,6 +61,9 @@ jobs:
   auto-reading:
     runs-on: ubuntu-latest
     timeout-minutes: 200  # 200分钟超时
+    env:
+      # Secret 优先；定时触发没有手动输入，默认仅失败通知，手动取消勾选可恢复成功通知。
+      NOTIFICATION_ONLY_ON_FAILURE: ${{ secrets.NOTIFICATION_ONLY_ON_FAILURE || (github.event.inputs.notify_only_on_failure == 'false' && 'false' || 'true') }}
     
     steps:
     - name: Checkout code
@@ -137,10 +140,11 @@ jobs:
         notification:
           enabled: ${{ github.event.inputs.notify_enabled != 'false' }}
           include_statistics: true
-          only_on_failure: ${{ github.event.inputs.notify_only_on_failure == 'true' }}
+          only_on_failure: ${NOTIFICATION_ONLY_ON_FAILURE}
           triggers:
-            session_success: ${{ github.event.inputs.notify_only_on_failure != 'true' }}
-            multi_user_summary: ${{ github.event.inputs.notify_only_on_failure != 'true' }}
+            # 程序根据 only_on_failure 统一关闭成功摘要，避免与 Secret 设置冲突。
+            session_success: true
+            multi_user_summary: true
             session_failure: true
             runtime_error: true
             general: true
@@ -202,7 +206,6 @@ jobs:
         SERVERCHAN3_SHORT: ${{ secrets.SERVERCHAN3_SHORT }}
         PUSHDEER_PUSHKEY: ${{ secrets.PUSHDEER_PUSHKEY }}
         PUSHDEER_TYPE: ${{ secrets.PUSHDEER_TYPE }}
-        NOTIFICATION_ONLY_ON_FAILURE: ${{ secrets.NOTIFICATION_ONLY_ON_FAILURE || github.event.inputs.notify_only_on_failure == 'true' || 'false' }}
         HISTORY_ENABLED: ${{ secrets.HISTORY_ENABLED || github.event.inputs.history_enabled == 'true' || 'true' }}
         HISTORY_FILE: ${{ secrets.HISTORY_FILE || 'logs/run-history.json' }}
         HISTORY_MAX_ENTRIES: ${{ secrets.HISTORY_MAX_ENTRIES || github.event.inputs.history_max_entries || '50' }}
@@ -217,7 +220,7 @@ jobs:
         echo "- 用户级阅读时长: ${USER_TARGET_DURATIONS:-未设置}"
         echo "- 阅读模式: ${{ github.event.inputs.reading_mode || 'smart_random' }}"
         echo "- 启用通知: ${{ github.event.inputs.notify_enabled != 'false' }}"
-        echo "- 仅失败通知: ${{ github.event.inputs.notify_only_on_failure == 'true' }}"
+        echo "- 仅失败通知: ${NOTIFICATION_ONLY_ON_FAILURE}"
         echo "- 历史持久化: ${{ github.event.inputs.history_enabled != 'false' }}"
         echo "- 历史保留条数: ${{ github.event.inputs.history_max_entries || '50' }}"
         echo "================================"

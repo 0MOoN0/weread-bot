@@ -51,7 +51,7 @@ curl 'https://weread.qq.com/web/book/read' -H 'cookie: wr_skey=user2; ...' --dat
 | `USER_TARGET_DURATIONS` | 多用户分别阅读时长，按 cURL 顺序逗号分隔，如 `10,140`；未填写的用户沿用 `TARGET_DURATION` | 空 |
 | `MAX_CONCURRENT_USERS` | 多用户并发数量（>=1） | 1 |
 | `HACK_COOKIE_REFRESH_QL` | Cookie 刷新的首选 ql 值；鉴权失败时自动尝试一次相反值 | false |
-| `NOTIFICATION_ONLY_ON_FAILURE` | 仅失败通知开关（true/false），覆盖 workflow 运行参数 | false |
+| `NOTIFICATION_ONLY_ON_FAILURE` | 仅失败通知开关（true/false），覆盖 workflow 运行参数 | true |
 | `HISTORY_ENABLED` | 是否启用执行历史持久化 | true |
 | `HISTORY_FILE` | 执行历史输出路径 | logs/run-history.json |
 | `HISTORY_MAX_ENTRIES` | 最近执行记录保留条数 | 50 |
@@ -216,7 +216,7 @@ on:
 | `user_target_durations` | 留空 | 多用户分别阅读时长，按 cURL 顺序逗号分隔，如 `10,140`；留空则优先使用 Secret `USER_TARGET_DURATIONS` |
 | `reading_mode` | `smart_random` | 阅读模式 |
 | `notify_enabled` | `true` | 是否启用通知 |
-| `notify_only_on_failure` | `false` | 仅失败时发送通知 |
+| `notify_only_on_failure` | `true` | 仅失败时发送通知 |
 | `history_enabled` | `true` | 是否启用执行历史持久化 |
 | `history_max_entries` | `50` | 执行历史最多保留多少条 |
 
@@ -224,9 +224,9 @@ on:
 
 多用户场景可额外填写 `user_target_durations`，例如 `10,140` 会让第 1 段 cURL 对应的用户读 10 分钟、第 2 段 cURL 对应的用户读 140 分钟；未填写或留空的用户沿用全局 `target_duration`。
 
-同时，你也可以直接在界面勾选以上两个通知开关：`notify_enabled` 控制是否生成阅读成功摘要，`notify_only_on_failure` 则对应 `config.yaml` 中的 `notification.only_on_failure`，会自动关闭 `session_success` 和 `multi_user_summary` 两类成功事件，仅保留失败/异常通知。
+定时任务和手动触发默认仅失败时发送通知，成功阅读不再推送单个账号摘要或多账号总结。`notify_enabled` 控制是否启用全部通知；`notify_only_on_failure` 对应 `config.yaml` 中的 `notification.only_on_failure`，会自动关闭 `session_success` 和 `multi_user_summary` 两类成功事件，保留失败/异常通知。手动触发时取消勾选 `notify_only_on_failure`，即可恢复成功通知。
 
-如果希望默认采用“仅失败通知”策略（无需每次触发都勾选），可以设置仓库 Secret `NOTIFICATION_ONLY_ON_FAILURE=true`。该 Secret 会通过环境变量覆盖运行参数，在 workflow 中自动传递给 `NOTIFICATION_ONLY_ON_FAILURE`。
+仓库 Secret `NOTIFICATION_ONLY_ON_FAILURE` 优先于手动选择：设为 `true` 时始终仅失败通知，设为 `false` 时允许成功通知。未设置该 Secret 时，使用上述默认值或手动选择。
 
 执行历史同样支持“仓库 Secret 默认值 + 手动触发临时覆盖”的组合方式。默认情况下，workflow 会把 `logs/run-history.json` 与 `logs/weread.log` 一起上传为 artifact；如果你通过 Secret 自定义了 `HISTORY_FILE`，建议同步调整 workflow 中的 artifact 路径。
 
